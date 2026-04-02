@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hidden Card Battle</title>
+    <style>
+        body { font-family: sans-serif; background: #1a1a1a; color: white; text-align: center; margin: 0; padding: 10px; touch-action: manipulation; }
+        .container { max-width: 400px; margin: auto; background: #2a2a2a; padding: 20px; border-radius: 20px; box-shadow: 0 8px 20px rgba(0,0,0,0.6); }
+        .score-board { display: flex; justify-content: space-around; background: #444; border-radius: 10px; padding: 10px; margin-bottom: 20px; font-weight: bold; }
+        .card-area { display: flex; justify-content: center; gap: 10px; margin: 15px 0; min-height: 100px; }
+        
+        /* カードの基本スタイル */
+        .card { 
+            width: 65px; height: 95px; 
+            background: #3d3d3d; border: 2px solid #555; border-radius: 10px; 
+            display: flex; align-items: center; justify-content: center; 
+            font-size: 1.6rem; font-weight: bold; cursor: pointer; 
+            color: #888; /* 伏せている時の文字色 */
+        }
+        
+        /* めくられた時のスタイル */
+        .card.open { 
+            background: white; color: black; 
+            border-color: #00e5ff; box-shadow: 0 0 15px #00e5ff; 
+        }
+        
+        /* 使用済み・選択不可のスタイル */
+        .card.used { background: #1a1a1a; border: 1px dashed #444; color: #444; cursor: default; }
+
+        .controls { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 20px; }
+        button { padding: 18px; border-radius: 15px; border: none; font-weight: bold; font-size: 1.1rem; background: #00e5ff; color: #000; }
+        .btn-stop { background: #ff4444; color: white; margin-top: 5px; }
+        .msg-box { height: 70px; color: #00e5ff; font-weight: bold; display: flex; align-items: center; justify-content: center; font-size: 1rem; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="score-board">
+        <div>Player: <span id="p-score">0</span> / 3</div>
+        <div>CPU: <span id="c-score">0</span> / 3</div>
+    </div>
+
+    <div id="phase-label" style="color: #888; font-size: 0.8rem;">STEP 1: BASE CARD</div>
+    
+    <p style="font-size: 0.8rem;">CPU'S FIELD</p>
+    <div class="card-area">
+        <div id="c-0" class="card">伏</div>
+        <div id="c-1" class="card">伏</div>
+        <div id="c-2" class="card">伏</div>
+    </div>
+
+    <div id="msg" class="msg-box">好きな伏せ札を1枚<br>タップしてめくってください</div>
+
+    <p style="font-size: 0.8rem;">YOUR FIELD</p>
+    <div class="card-area" id="p-hand-area">
+        </div>
+
+    <div class="controls" id="ui-btns" style="display:none;">
+        <button id="main-btn" onclick="advancePhase()">次のフェーズへ</button>
+        <button class="btn-stop" onclick="showdown()">ここで勝負！</button>
+    </div>
+</div>
+
+<script>
+    let pMatch = 0, cMatch = 0;
+    let pCards = [], cCards = [];
+    let pData = {}, cData = {};
+    let phase = 1;
+
+    // ゲームの初期化
+    function init() {
+        // [1, 0, -1]をシャッフルして配置
+        pCards = [1, 0, -1].sort(() => Math.random() - 0.5);
+        cCards = [1, 0, -1].sort(() => Math.random() - 0.5);
+        pData = { base: null, add: 0, mult: 1 };
+        cData = { base: null, add: 0, mult: 1 };
+        phase = 1;
+
+        document.getElementById('phase-label').innerText = "STEP 1: BASE CARD";
+        document.getElementById('msg').innerHTML = "好きな伏せ札を1枚<br>タップしてめくってください";
+        document.getElementById('ui-btns').style.display = "none";
+        
+        // CPUの見た目をリセット
+        for(let i=0; i<3; i++){
+            let c = document.getElementById(`c-${i}`);
+            c.innerText = "伏";
+            c.className = "card";
+        }
+        render();
+    }
+
+    // プレイヤーのカード表示更新
+    function render() {
+        const area = document.getElementById('p-hand-area');
+        area.innerHTML = "";
+        pCards.forEach((val, i) => {
+            const cardEl = document.createElement('div');
+            
+            if (val === "USED") {
+                cardEl.className = "card used";
+                cardEl.innerText = "済";
+            } else {
+                cardEl.className = "card";
+                cardEl.innerText = "伏";
+                // タップした時の処理
+                cardEl.onclick = () => onCardTap(i);
+            }
+            area.appendChild(cardEl);
+        });
+    }
+
+    // カードをタップした時の処理
+    function onCardTap(idx) {
+        if (phase === 1) {
+            // ベースカード決定
+            pData.base = pCards[idx];
+            pCards[idx] = "USED";
+            
+            // CPUも1枚選ぶ
+            let cIdx = Math.floor(Math.random() * 3);
+            cData.base = cCards[cIdx];
+            cCards[cIdx] = "USED";
+
+            // めくる演出
+            const pArea = document.getElementById('p-hand-area');
+            pArea.children[idx].innerText = pData.base;
+            pArea.children[idx].classList.add('open');
+            
+            const cCard = document.getElementById(`c-${cIdx}`);
+            cCard.innerText = cData.base;
+            cCard.classList.add('open');
+
+            phase = 2;
+            setTimeout(() => {
+                document.getElementById('msg').innerHTML = "2枚から「加算」する1枚を<br>選んでください（数値は秘匿）";
+                document.getElementById('ui-btns').style.display = "grid";
+                document.getElementById('main-btn').style.display = "none"; // 加算を選ぶまで隠す
+                document.getElementById('phase-label').innerText = "STEP 2: ADDITION";
+            }, 500);
+
+        } else if (phase === 2) {
+            // 加算カード決定（自分にも見えない）
+            pData.add = pCards[idx];
+            pCards[idx] = "USED";
+
+            // CPUも加算（ランダム）
+            let avail = [];
+            cCards.forEach((v, i) => { if(v!=="USED") avail.push(i); });
+            let cIdx = avail[Math.floor(Math.random() * avail.length)];
+            cData.add = cCards[cIdx];
+            cCards[cIdx] = "USED";
+
+            // 画面更新
+            render();
+            document.getElementById(`c-${cIdx}`).innerText = "伏";
+            document.getElementById(`c-${cIdx}`).classList.add('used');
+
+            phase = 3;
+            document.getElementById('main-btn').style.display = "block";
+            document.getElementById('main-btn').innerText = "乗算して結果を見る";
+            document.getElementById('msg').innerHTML = "残った最後の1枚を<br>「乗算」に使用しますか？";
+            document.getElementById('phase-label').innerText = "STEP 3: MULTIPLICATION";
+        }
+    }
+
+    function advancePhase() {
+        if (phase === 3) {
+            // 残った1枚を取得
+            let lastVal = pCards.find(v => v !== "USED");
+            pData.mult = lastVal;
+
+            // CPUの戦略（得点が上がるなら掛ける）
+            let cLast = cCards.find(v => v !== "USED");
+            if ((cData.base + cData.add) * cLast > (cData.base + cData.add)) {
+                cData.mult = cLast;
+            }
+            showdown();
+        }
+    }
+
+    function showdown() {
+        const pFinal = (pData.base + pData.add) * pData.mult;
+        const cFinal = (cData.base + cData.add) * cData.mult;
+
+        let res = `【勝負！】\n`;
+        res += `あなた: (${pData.base} + ${pData.add}) × ${pData.mult} = ${pFinal}\n`;
+        res += `ＣＰＵ: (${cData.base} + ${cData.add}) × ${cData.mult} = ${cFinal}\n\n`;
+
+        if (pFinal > cFinal) { pMatch++; res += "あなたの勝ち！"; }
+        else if (pFinal < cFinal) { cMatch++; res += "CPUの勝ち..."; }
+        else { res += "引き分け"; }
+
+        alert(res);
+        document.getElementById('p-score').innerText = pMatch;
+        document.getElementById('c-score').innerText = cMatch;
+
+        if (pMatch >= 3 || cMatch >= 3) {
+            alert(pMatch >= 3 ? "おめでとう！3勝達成！" : "残念、敗北です。");
+            pMatch = 0; cMatch = 0;
+            document.getElementById('p-score').innerText = 0;
+            document.getElementById('c-score').innerText = 0;
+        }
+        init();
+    }
+
+    init();
+</script>
+</body>
+</html>
